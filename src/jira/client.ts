@@ -49,14 +49,23 @@ export class JiraClient {
 
     const apiVersion = await this.detectApiVersion();
     const jql = `key in (${issueKeys.map((k) => `"${k}"`).join(',')})`;
-    const fields = 'summary,labels,issuetype';
+    const fields = ['summary', 'labels', 'issuetype'];
 
-    const path =
-      apiVersion === 'v3'
-        ? `/rest/api/3/search?jql=${encodeURIComponent(jql)}&fields=${fields}`
-        : `/rest/api/2/search?jql=${encodeURIComponent(jql)}&fields=${fields}`;
+    let response: { issues?: unknown[] };
 
-    const response = await this.request(path) as { issues?: unknown[] };
+    if (apiVersion === 'v3') {
+      // v3 now uses POST /rest/api/3/search/jql (new endpoint as of May 2025)
+      response = await this.postRequest('/rest/api/3/search/jql', {
+        jql,
+        fields,
+      }) as { issues?: unknown[] };
+    } else {
+      // v2 still uses GET /rest/api/2/search
+      const fieldsParam = fields.join(',');
+      const path = `/rest/api/2/search?jql=${encodeURIComponent(jql)}&fields=${fieldsParam}`;
+      response = await this.request(path) as { issues?: unknown[] };
+    }
+
     return (response.issues || []).map((issue: unknown) =>
       this.normalizeIssue(issue)
     );
