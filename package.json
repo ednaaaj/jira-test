@@ -1,5 +1,5 @@
 {
-  "name": "jira-test",
+  "name": "@ednaaaj/jira-test",
   "version": "1.0.0",
   "description": "CLI tool that connects Jira issues to automated tests and runs them locally",
   "main": "dist/index.js",
@@ -25,7 +25,7 @@
     "automation",
     "test-management"
   ],
-  "author": "",
+  "author": "ednaaaj",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
@@ -53,6 +53,9 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/jira-test.git"
+    "url": "https://github.com/ednaaaj/jira-test.git"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
