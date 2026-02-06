@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "jira-test": "./bin/jira-test.js"
+    "jira-test": "bin/jira-test.js"
   },
   "scripts": {
     "build": "tsc",
@@ -53,7 +53,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/ednaaaj/jira-test.git"
+    "url": "git+https://github.com/ednaaaj/jira-test.git"
   },
   "publishConfig": {
     "access": "public"
