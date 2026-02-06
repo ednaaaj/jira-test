@@ -5,6 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import ora from 'ora';
 import { loadConfig, ConfigError } from '../config';
 import { JiraClient, JiraClientError } from '../jira/client';
 import { collectTestCases } from '../jira/collector';
@@ -129,18 +130,16 @@ export async function runFileCommand(
       repoRoot = path.dirname(repoRoot);
     }
 
-    // Run tests
-    console.log(`Running tests...`);
+    // Run tests - use the specific test file instead of just the pattern
+    const testSpinner = ora('Running tests...').start();
     const jestResult = await runJest({
-      jestCmd: command,
+      jestCmd: `${command} ${absolutePath}`,
       repoPath: repoRoot,
       pattern: jiraKey,
       dryRun: options.dry,
     });
 
-    console.log(`✓ ${jestResult.summary.total} tests ran`);
-    console.log(`  ${jestResult.summary.passed} passed`);
-    console.log(`  ${jestResult.summary.failed} failed`);
+    testSpinner.succeed(`${jestResult.summary.total} tests ran — ${jestResult.summary.passed} passed · ${jestResult.summary.failed} failed`);
     console.log('');
 
     // Load Jira config
@@ -148,14 +147,31 @@ export async function runFileCommand(
     const client = new JiraClient(config.jira);
 
     // Fetch Jira ticket
-    console.log(`Fetching Jira ticket ${jiraKey}...`);
+    const jiraSpinner = ora(`Fetching Jira ticket ${jiraKey}...`).start();
     const collectorResult = await collectTestCases(client, jiraKey, {
       linkType: 'is tested by',
       platform: 'all',
     });
 
-    console.log(`✓ Found ${collectorResult.testCases.length} subtasks`);
+    jiraSpinner.succeed(`Found ${collectorResult.testCases.length} subtasks in ${jiraKey}`);
     console.log('');
+
+    // Derive component file name from test file
+    const testFileName = path.basename(absolutePath);
+    const componentFileName = testFileName.replace(/\.(test|spec)\./, '.');
+
+    console.log(`Looking for coverage of: ${componentFileName}`);
+    console.log('');
+
+    // Filter coverage to only show the component being tested
+    if (jestResult.coverage) {
+      jestResult.coverage.componentFiles = jestResult.coverage.componentFiles.filter(
+        f => f.file === componentFileName
+      );
+      jestResult.coverage.files = jestResult.coverage.files.filter(
+        f => f.file === componentFileName
+      );
+    }
 
     // Build test case results (compare subtasks with test results)
     const testCaseResults: TestCaseResult[] = collectorResult.testCases.map((testCase) => {
@@ -181,7 +197,7 @@ export async function runFileCommand(
 
     // Post to Jira
     if (options.comment) {
-      console.log(`Posting results to Jira...`);
+      const postSpinner = ora(`Posting results to Jira...`).start();
       await postJiraComments(
         client,
         jiraKey,
@@ -190,7 +206,7 @@ export async function runFileCommand(
         'ticket-key',
         jestResult.summary
       );
-      console.log(`✓ Posted to ${jiraKey}`);
+      postSpinner.succeed(`Posted coverage and results to ${jiraKey}`);
     }
 
     // Write JSON report
