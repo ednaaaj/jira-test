@@ -71,7 +71,8 @@ export async function runCommand(
 
     // Create test pattern
     const matchResult = createTestPattern(collectorResult.testCases, {
-      mode: options.mode as 'title',
+      mode: options.mode as 'title' | 'ticket-key',
+      jiraKey,
     });
 
     // Print header
@@ -156,7 +157,14 @@ export async function runCommand(
 
     // Post comments to Jira
     if (options.comment) {
-      await postJiraComments(client, jiraKey, testCaseResults, jestResult.coverage);
+      await postJiraComments(
+        client,
+        jiraKey,
+        testCaseResults,
+        jestResult.coverage,
+        options.mode as 'title' | 'ticket-key',
+        jestResult.summary
+      );
     }
 
     // Write JSON report
@@ -199,39 +207,44 @@ export async function runCommand(
 /**
  * Post comments to Jira for test results
  */
-async function postJiraComments(
+export async function postJiraComments(
   client: JiraClient,
   parentKey: string,
   testCaseResults: TestCaseResult[],
-  coverage?: CoverageData
+  coverage?: CoverageData,
+  mode?: 'title' | 'ticket-key',
+  testSummary?: { total: number; passed: number; failed: number }
 ): Promise<void> {
-  // Post comment on each passing subtask
-  for (const result of testCaseResults) {
-    if (result.status === 'PASS') {
-      const duration = result.jestResult?.duration
-        ? `${result.jestResult.duration}ms`
-        : 'N/A';
+  // In 'title' mode, post comments on individual passing subtasks
+  // In 'ticket-key' mode, skip individual subtask comments (we're running by describe block, not matching individual tests)
+  if (mode === 'title') {
+    for (const result of testCaseResults) {
+      if (result.status === 'PASS') {
+        const duration = result.jestResult?.duration
+          ? `${result.jestResult.duration}ms`
+          : 'N/A';
 
-      const comment = [
-        `✅ Test Passed`,
-        `Test: "${result.testCase.summary}"`,
-        `Duration: ${duration}`,
-        `Run by: jira-test CLI`,
-      ].join('\n');
+        const comment = [
+          `✅ Test Passed`,
+          `Test: "${result.testCase.summary}"`,
+          `Duration: ${duration}`,
+          `Run by: jira-test CLI`,
+        ].join('\n');
 
-      try {
-        await client.addComment(result.testCase.jiraKey, comment);
-      } catch (err) {
-        console.error(
-          `Warning: Failed to post comment on ${result.testCase.jiraKey}: ${err instanceof Error ? err.message : String(err)}`
-        );
+        try {
+          await client.addComment(result.testCase.jiraKey, comment);
+        } catch (err) {
+          console.error(
+            `Warning: Failed to post comment on ${result.testCase.jiraKey}: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
       }
     }
   }
 
   // Post rich summary comment on parent ticket
-  const textBody = buildParentCommentText(testCaseResults, coverage);
-  const adfBody = buildParentCommentAdf(testCaseResults, coverage);
+  const textBody = buildParentCommentText(testCaseResults, coverage, mode, testSummary);
+  const adfBody = buildParentCommentAdf(testCaseResults, coverage, mode, testSummary);
 
   try {
     await client.addComment(parentKey, textBody, adfBody);
@@ -248,24 +261,45 @@ async function postJiraComments(
 
 function buildParentCommentText(
   testCaseResults: TestCaseResult[],
-  coverage?: CoverageData
+  coverage?: CoverageData,
+  mode?: 'title' | 'ticket-key',
+  testSummary?: { total: number; passed: number; failed: number }
 ): string {
-  const passed = testCaseResults.filter((r) => r.status === 'PASS').length;
-  const failed = testCaseResults.filter((r) => r.status === 'FAIL').length;
-  const notFound = testCaseResults.filter((r) => r.status === 'NOT_FOUND').length;
-  const total = testCaseResults.length;
+  const lines: string[] = ['🧪 Test Run Summary'];
 
-  const lines: string[] = [
-    `🧪 Test Run Summary`,
-    `${total} subtasks tested — ${passed} passed · ${failed} failed · ${notFound} not found`,
-    '',
-    'Test Results:',
-  ];
+  // In ticket-key mode, show actual Jest test counts
+  if (mode === 'ticket-key' && testSummary) {
+    lines.push(
+      `${testSummary.total} tests ran — ${testSummary.passed} passed · ${testSummary.failed} failed`
+    );
 
-  for (const r of testCaseResults) {
-    const icon = r.status === 'PASS' ? '✅' : r.status === 'FAIL' ? '❌' : '⚠️';
-    const dur = r.jestResult?.duration ? `${r.jestResult.duration}ms` : '-';
-    lines.push(`  ${icon} ${r.testCase.jiraKey} — "${r.testCase.summary}" (${dur})`);
+    // Add subtask matching table
+    if (testCaseResults.length > 0) {
+      lines.push('', 'Subtask Matching:');
+      for (const r of testCaseResults) {
+        const icon = r.status === 'PASS' ? '✅ Found' : r.status === 'FAIL' ? '❌ Found (Failed)' : '⚠️ Not found in file';
+        const testName = r.jestResult ? ` → Test: "${r.jestResult.title}"` : '';
+        lines.push(`  ${r.testCase.jiraKey}: ${r.testCase.summary}`);
+        lines.push(`    ${icon}${testName}`);
+      }
+    }
+  } else {
+    // In title mode, show subtask matching results
+    const passed = testCaseResults.filter((r) => r.status === 'PASS').length;
+    const failed = testCaseResults.filter((r) => r.status === 'FAIL').length;
+    const notFound = testCaseResults.filter((r) => r.status === 'NOT_FOUND').length;
+    const total = testCaseResults.length;
+
+    lines.push(
+      `${total} subtasks tested — ${passed} passed · ${failed} failed · ${notFound} not found`
+    );
+
+    lines.push('', 'Test Results:');
+    for (const r of testCaseResults) {
+      const icon = r.status === 'PASS' ? '✅' : r.status === 'FAIL' ? '❌' : '⚠️';
+      const dur = r.jestResult?.duration ? `${r.jestResult.duration}ms` : '-';
+      lines.push(`  ${icon} ${r.testCase.jiraKey} — "${r.testCase.summary}" (${dur})`);
+    }
   }
 
   if (coverage) {
@@ -278,14 +312,16 @@ function buildParentCommentText(
       }
     }
 
-    // Overall Coverage - show all files or summary
-    lines.push('');
-    lines.push('Overall Coverage:');
-    if (!coverage.filtered) {
-      lines.push(`  All files — Stmts: ${coverage.statements}% | Branch: ${coverage.branches}% | Funcs: ${coverage.functions}% | Lines: ${coverage.lines}%`);
-    }
-    for (const f of coverage.files) {
-      lines.push(`  ${f.file} — Stmts: ${f.statements}% | Branch: ${f.branches}% | Funcs: ${f.functions}% | Lines: ${f.lines}%`);
+    // Overall Coverage - only show if no component files (fallback)
+    if (coverage.componentFiles.length === 0) {
+      lines.push('');
+      lines.push('Overall Coverage:');
+      if (!coverage.filtered) {
+        lines.push(`  All files — Stmts: ${coverage.statements}% | Branch: ${coverage.branches}% | Funcs: ${coverage.functions}% | Lines: ${coverage.lines}%`);
+      }
+      for (const f of coverage.files) {
+        lines.push(`  ${f.file} — Stmts: ${f.statements}% | Branch: ${f.branches}% | Funcs: ${f.functions}% | Lines: ${f.lines}%`);
+      }
     }
   }
 
@@ -298,39 +334,91 @@ function buildParentCommentText(
 
 function buildParentCommentAdf(
   testCaseResults: TestCaseResult[],
-  coverage?: CoverageData
+  coverage?: CoverageData,
+  mode?: 'title' | 'ticket-key',
+  testSummary?: { total: number; passed: number; failed: number }
 ): unknown {
-  const passed = testCaseResults.filter((r) => r.status === 'PASS').length;
-  const failed = testCaseResults.filter((r) => r.status === 'FAIL').length;
-  const notFound = testCaseResults.filter((r) => r.status === 'NOT_FOUND').length;
-  const total = testCaseResults.length;
-
-  const panelType = failed > 0 ? 'error' : notFound > 0 ? 'warning' : 'success';
-
   const content: unknown[] = [];
 
   // Title
   content.push(adfHeading(3, '🧪 Test Run Summary'));
 
   // Summary panel
-  content.push(
-    adfPanel(panelType, [
-      adfParagraph([
-        adfText(`${total} subtasks tested`, [{ type: 'strong' }]),
-        adfText('  —  '),
-        adfText(`${passed} passed`, [{ type: 'strong' }, { type: 'textColor', attrs: { color: '#36b37e' } }]),
-        adfText('  ·  '),
-        adfText(`${failed} failed`, failed > 0 ? [{ type: 'strong' }, { type: 'textColor', attrs: { color: '#ff5630' } }] : []),
-        adfText('  ·  '),
-        adfText(`${notFound} not found`, notFound > 0 ? [{ type: 'textColor', attrs: { color: '#ff991f' } }] : []),
-      ]),
-    ])
-  );
+  if (mode === 'ticket-key' && testSummary) {
+    // In ticket-key mode, show actual Jest test counts
+    const panelType = testSummary.failed > 0 ? 'error' : 'success';
+    content.push(
+      adfPanel(panelType, [
+        adfParagraph([
+          adfText(`${testSummary.total} tests ran`, [{ type: 'strong' }]),
+          adfText('  —  '),
+          adfText(`${testSummary.passed} passed`, [{ type: 'strong' }, { type: 'textColor', attrs: { color: '#36b37e' } }]),
+          adfText('  ·  '),
+          adfText(`${testSummary.failed} failed`, testSummary.failed > 0 ? [{ type: 'strong' }, { type: 'textColor', attrs: { color: '#ff5630' } }] : []),
+        ]),
+      ])
+    );
 
-  // Test results table
-  content.push(adfHeading(4, 'Test Results'));
+    // Add subtask matching table
+    if (testCaseResults.length > 0) {
+      content.push(adfHeading(4, '📋 Subtask Matching'));
 
-  const testTableHeader = adfTableRow(
+      const subtaskHeader = adfTableRow([
+        adfTableHeaderCell([adfParagraph([adfText('Subtask', [{ type: 'strong' }])])]),
+        adfTableHeaderCell([adfParagraph([adfText('Title', [{ type: 'strong' }])])]),
+        adfTableHeaderCell([adfParagraph([adfText('Status', [{ type: 'strong' }])])]),
+      ]);
+
+      const subtaskRows = testCaseResults.map((r) => {
+        let statusColor: string;
+        let statusLabel: string;
+        if (r.status === 'PASS') {
+          statusColor = 'green';
+          statusLabel = 'Found in file';
+        } else if (r.status === 'FAIL') {
+          statusColor = 'red';
+          statusLabel = 'Found (Failed)';
+        } else {
+          statusColor = 'yellow';
+          statusLabel = 'Not found in file';
+        }
+
+        return adfTableRow([
+          adfTableCell([adfParagraph([adfText(r.testCase.jiraKey)])]),
+          adfTableCell([adfParagraph([adfText(r.testCase.summary)])]),
+          adfTableCell([adfParagraph([adfStatus(statusLabel, statusColor)])]),
+        ]);
+      });
+
+      content.push(adfTable([subtaskHeader, ...subtaskRows]));
+    }
+  } else {
+    // In title mode, show subtask matching results
+    const passed = testCaseResults.filter((r) => r.status === 'PASS').length;
+    const failed = testCaseResults.filter((r) => r.status === 'FAIL').length;
+    const notFound = testCaseResults.filter((r) => r.status === 'NOT_FOUND').length;
+    const total = testCaseResults.length;
+
+    const panelType = failed > 0 ? 'error' : notFound > 0 ? 'warning' : 'success';
+
+    content.push(
+      adfPanel(panelType, [
+        adfParagraph([
+          adfText(`${total} subtasks tested`, [{ type: 'strong' }]),
+          adfText('  —  '),
+          adfText(`${passed} passed`, [{ type: 'strong' }, { type: 'textColor', attrs: { color: '#36b37e' } }]),
+          adfText('  ·  '),
+          adfText(`${failed} failed`, failed > 0 ? [{ type: 'strong' }, { type: 'textColor', attrs: { color: '#ff5630' } }] : []),
+          adfText('  ·  '),
+          adfText(`${notFound} not found`, notFound > 0 ? [{ type: 'textColor', attrs: { color: '#ff991f' } }] : []),
+        ]),
+      ])
+    );
+
+    // Test results table (only in title mode)
+    content.push(adfHeading(4, 'Test Results'));
+
+    const testTableHeader = adfTableRow(
     [
       adfTableHeaderCell([adfParagraph([adfText('Subtask', [{ type: 'strong' }])])]),
       adfTableHeaderCell([adfParagraph([adfText('Test Name', [{ type: 'strong' }])])]),
@@ -339,38 +427,39 @@ function buildParentCommentAdf(
     ]
   );
 
-  const testTableRows = testCaseResults.map((r) => {
-    let statusColor: string;
-    let statusLabel: string;
-    switch (r.status) {
-      case 'PASS':
-        statusColor = 'green';
-        statusLabel = 'PASSED';
-        break;
-      case 'FAIL':
-        statusColor = 'red';
-        statusLabel = 'FAILED';
-        break;
-      case 'NOT_FOUND':
-        statusColor = 'yellow';
-        statusLabel = 'NOT FOUND';
-        break;
-      default:
-        statusColor = 'red';
-        statusLabel = 'ERROR';
-    }
+    const testTableRows = testCaseResults.map((r) => {
+      let statusColor: string;
+      let statusLabel: string;
+      switch (r.status) {
+        case 'PASS':
+          statusColor = 'green';
+          statusLabel = 'PASSED';
+          break;
+        case 'FAIL':
+          statusColor = 'red';
+          statusLabel = 'FAILED';
+          break;
+        case 'NOT_FOUND':
+          statusColor = 'yellow';
+          statusLabel = 'NOT FOUND';
+          break;
+        default:
+          statusColor = 'red';
+          statusLabel = 'ERROR';
+      }
 
-    const duration = r.jestResult?.duration ? `${r.jestResult.duration}ms` : '-';
+      const duration = r.jestResult?.duration ? `${r.jestResult.duration}ms` : '-';
 
-    return adfTableRow([
-      adfTableCell([adfParagraph([adfText(r.testCase.jiraKey)])]),
-      adfTableCell([adfParagraph([adfText(r.testCase.summary)])]),
-      adfTableCell([adfParagraph([adfStatus(statusLabel, statusColor)])]),
-      adfTableCell([adfParagraph([adfText(duration)])]),
-    ]);
-  });
+      return adfTableRow([
+        adfTableCell([adfParagraph([adfText(r.testCase.jiraKey)])]),
+        adfTableCell([adfParagraph([adfText(r.testCase.summary)])]),
+        adfTableCell([adfParagraph([adfStatus(statusLabel, statusColor)])]),
+        adfTableCell([adfParagraph([adfText(duration)])]),
+      ]);
+    });
 
-  content.push(adfTable([testTableHeader, ...testTableRows]));
+    content.push(adfTable([testTableHeader, ...testTableRows]));
+  }
 
   // Coverage tables
   if (coverage) {
@@ -402,32 +491,34 @@ function buildParentCommentAdf(
       content.push(adfTable([coverageHeader, ...componentRows]));
     }
 
-    // Overall Coverage
-    content.push(adfHeading(4, '📊 Overall Coverage'));
+    // Overall Coverage - only show if no component files (fallback)
+    if (coverage.componentFiles.length === 0) {
+      content.push(adfHeading(4, '📊 Overall Coverage'));
 
-    const overallRows: unknown[] = [];
+      const overallRows: unknown[] = [];
 
-    if (!coverage.filtered) {
-      overallRows.push(adfTableRow([
-        adfTableCell([adfParagraph([adfText('All files', [{ type: 'strong' }])])]),
-        adfTableCell([adfParagraph([adfColoredPct(coverage.statements)])]),
-        adfTableCell([adfParagraph([adfColoredPct(coverage.branches)])]),
-        adfTableCell([adfParagraph([adfColoredPct(coverage.functions)])]),
-        adfTableCell([adfParagraph([adfColoredPct(coverage.lines)])]),
-      ]));
+      if (!coverage.filtered) {
+        overallRows.push(adfTableRow([
+          adfTableCell([adfParagraph([adfText('All files', [{ type: 'strong' }])])]),
+          adfTableCell([adfParagraph([adfColoredPct(coverage.statements)])]),
+          adfTableCell([adfParagraph([adfColoredPct(coverage.branches)])]),
+          adfTableCell([adfParagraph([adfColoredPct(coverage.functions)])]),
+          adfTableCell([adfParagraph([adfColoredPct(coverage.lines)])]),
+        ]));
+      }
+
+      for (const f of coverage.files) {
+        overallRows.push(adfTableRow([
+          adfTableCell([adfParagraph([adfText(f.file, [{ type: 'code' }])])]),
+          adfTableCell([adfParagraph([adfColoredPct(f.statements)])]),
+          adfTableCell([adfParagraph([adfColoredPct(f.branches)])]),
+          adfTableCell([adfParagraph([adfColoredPct(f.functions)])]),
+          adfTableCell([adfParagraph([adfColoredPct(f.lines)])]),
+        ]));
+      }
+
+      content.push(adfTable([coverageHeader, ...overallRows]));
     }
-
-    for (const f of coverage.files) {
-      overallRows.push(adfTableRow([
-        adfTableCell([adfParagraph([adfText(f.file, [{ type: 'code' }])])]),
-        adfTableCell([adfParagraph([adfColoredPct(f.statements)])]),
-        adfTableCell([adfParagraph([adfColoredPct(f.branches)])]),
-        adfTableCell([adfParagraph([adfColoredPct(f.functions)])]),
-        adfTableCell([adfParagraph([adfColoredPct(f.lines)])]),
-      ]));
-    }
-
-    content.push(adfTable([coverageHeader, ...overallRows]));
   }
 
   return adfDoc(content);

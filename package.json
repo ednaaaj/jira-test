@@ -1,6 +1,6 @@
 {
   "name": "@ednaaaj/jira-test",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "CLI tool that connects Jira issues to automated tests and runs them locally",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

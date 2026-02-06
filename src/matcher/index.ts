@@ -6,10 +6,11 @@
 import { TestCase } from '../jira/types';
 import { createCombinedPattern, isValidRegex } from './regex';
 
-export type MatchMode = 'title';
+export type MatchMode = 'title' | 'ticket-key';
 
 export interface MatcherOptions {
   mode: MatchMode;
+  jiraKey?: string; // For 'ticket-key' mode
 }
 
 export interface MatchResult {
@@ -20,7 +21,9 @@ export interface MatchResult {
 
 /**
  * Create a Jest test pattern from test cases
- * Currently supports 'title' mode (exact match on summary)
+ * Supports two modes:
+ * - 'title': Matches individual test titles from Jira subtask summaries
+ * - 'ticket-key': Matches describe blocks with the Jira ticket key (e.g., describe('HOTEL-27752', ...))
  */
 export function createTestPattern(
   testCases: TestCase[],
@@ -28,6 +31,20 @@ export function createTestPattern(
 ): MatchResult {
   const warnings: string[] = [];
 
+  // ticket-key mode: Use Jira key to match describe blocks
+  if (options.mode === 'ticket-key') {
+    if (!options.jiraKey) {
+      throw new Error('jiraKey is required for ticket-key mode');
+    }
+
+    return {
+      pattern: options.jiraKey,
+      testCases,
+      warnings: [],
+    };
+  }
+
+  // title mode: Match individual test titles from subtasks
   if (testCases.length === 0) {
     return {
       pattern: '',

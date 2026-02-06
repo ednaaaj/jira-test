@@ -251,9 +251,25 @@ function readCoverageSummary(
     const allFiles: FileCoverageData[] = [];
     const matchedFiles: FileCoverageData[] = [];
 
+    // Filter to exclude jira-test internal files (src/jira, src/runner, src/matcher, etc.)
+    const excludePatterns = [
+      'client.ts', 'collector.ts', 'types.ts',  // jira module
+      'jest.ts',  // runner module
+      'index.ts', 'regex.ts',  // matcher module
+      'json.ts', 'terminal.ts',  // reporter module
+      'run.ts', 'run-file.ts',  // commands module
+      'config.ts', 'cli.ts'  // core files
+    ];
+
     for (const [key, value] of Object.entries(json)) {
       if (key === 'total') continue;
       const fileName = path.basename(key);
+
+      // Skip jira-test internal files
+      if (excludePatterns.includes(fileName)) {
+        continue;
+      }
+
       const data = value as Record<string, { pct?: number }>;
       const fileData: FileCoverageData = {
         file: fileName,
