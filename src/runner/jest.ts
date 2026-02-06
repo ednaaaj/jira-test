@@ -36,6 +36,7 @@ export interface CoverageData {
   lines: number;
   files: FileCoverageData[];
   filtered: boolean;
+  componentFiles: FileCoverageData[]; // Files directly related to tests that ran
 }
 
 export interface JestRunResult {
@@ -278,6 +279,7 @@ function readCoverageSummary(
       lines: total.lines?.pct ?? 0,
       files,
       filtered: filtered && matchedFiles.length > 0,
+      componentFiles: matchedFiles, // Always include matched files for component coverage table
     };
   } catch {
     return undefined;

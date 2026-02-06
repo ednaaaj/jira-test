@@ -269,8 +269,18 @@ function buildParentCommentText(
   }
 
   if (coverage) {
+    // Component Coverage - show files directly related to tests
+    if (coverage.componentFiles.length > 0) {
+      lines.push('');
+      lines.push('Component Coverage:');
+      for (const f of coverage.componentFiles) {
+        lines.push(`  ${f.file} — Stmts: ${f.statements}% | Branch: ${f.branches}% | Funcs: ${f.functions}% | Lines: ${f.lines}%`);
+      }
+    }
+
+    // Overall Coverage - show all files or summary
     lines.push('');
-    lines.push('Code Coverage:');
+    lines.push('Overall Coverage:');
     if (!coverage.filtered) {
       lines.push(`  All files — Stmts: ${coverage.statements}% | Branch: ${coverage.branches}% | Funcs: ${coverage.functions}% | Lines: ${coverage.lines}%`);
     }
@@ -362,10 +372,9 @@ function buildParentCommentAdf(
 
   content.push(adfTable([testTableHeader, ...testTableRows]));
 
-  // Coverage table
+  // Coverage tables
   if (coverage) {
     content.push(adfRule());
-    content.push(adfHeading(4, 'Code Coverage'));
 
     const coverageHeader = adfTableRow([
       adfTableHeaderCell([adfParagraph([adfText('File', [{ type: 'strong' }])])]),
@@ -375,10 +384,31 @@ function buildParentCommentAdf(
       adfTableHeaderCell([adfParagraph([adfText('Lines', [{ type: 'strong' }])])]),
     ]);
 
-    const dataRows: unknown[] = [];
+    // Component Coverage - files directly tested
+    if (coverage.componentFiles.length > 0) {
+      content.push(adfHeading(4, '🎯 Component Coverage'));
+      content.push(adfParagraph([adfText('Coverage for components directly tested by this ticket:', [])]));
+
+      const componentRows: unknown[] = [];
+      for (const f of coverage.componentFiles) {
+        componentRows.push(adfTableRow([
+          adfTableCell([adfParagraph([adfText(f.file, [{ type: 'code' }])])]),
+          adfTableCell([adfParagraph([adfColoredPct(f.statements)])]),
+          adfTableCell([adfParagraph([adfColoredPct(f.branches)])]),
+          adfTableCell([adfParagraph([adfColoredPct(f.functions)])]),
+          adfTableCell([adfParagraph([adfColoredPct(f.lines)])]),
+        ]));
+      }
+      content.push(adfTable([coverageHeader, ...componentRows]));
+    }
+
+    // Overall Coverage
+    content.push(adfHeading(4, '📊 Overall Coverage'));
+
+    const overallRows: unknown[] = [];
 
     if (!coverage.filtered) {
-      dataRows.push(adfTableRow([
+      overallRows.push(adfTableRow([
         adfTableCell([adfParagraph([adfText('All files', [{ type: 'strong' }])])]),
         adfTableCell([adfParagraph([adfColoredPct(coverage.statements)])]),
         adfTableCell([adfParagraph([adfColoredPct(coverage.branches)])]),
@@ -388,7 +418,7 @@ function buildParentCommentAdf(
     }
 
     for (const f of coverage.files) {
-      dataRows.push(adfTableRow([
+      overallRows.push(adfTableRow([
         adfTableCell([adfParagraph([adfText(f.file, [{ type: 'code' }])])]),
         adfTableCell([adfParagraph([adfColoredPct(f.statements)])]),
         adfTableCell([adfParagraph([adfColoredPct(f.branches)])]),
@@ -397,7 +427,7 @@ function buildParentCommentAdf(
       ]));
     }
 
-    content.push(adfTable([coverageHeader, ...dataRows]));
+    content.push(adfTable([coverageHeader, ...overallRows]));
   }
 
   return adfDoc(content);
