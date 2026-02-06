@@ -1,0 +1,58 @@
+{
+  "name": "jira-test",
+  "version": "1.0.0",
+  "description": "CLI tool that connects Jira issues to automated tests and runs them locally",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "jira-test": "./bin/jira-test.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:smoke": "jest tests/smoke",
+    "lint": "eslint src tests --ext .ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "jira",
+    "testing",
+    "jest",
+    "cli",
+    "automation",
+    "test-management"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "chalk": "^4.1.2",
+    "ora": "^5.4.1",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.4",
+    "typescript": "^5.4.5",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "eslint": "^8.57.0"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/jira-test.git"
+  }
+}
