@@ -45,7 +45,7 @@ export JIRA_PAT="your-personal-access-token"
 2. Run tests for a Jira ticket:
 
 ```bash
-jira-test run HOTEL-27735
+jira-test run TICKET-1
 ```
 
 ## Usage
@@ -73,25 +73,22 @@ jira-test run <JIRA_KEY>
 
 ```bash
 # Run all test cases for a ticket
-jira-test run HOTEL-27735
-
-# Filter to web platform only
-jira-test run HOTEL-27735 --platform web
+jira-test run TICKET-1
 
 # Preview without running (dry run)
-jira-test run HOTEL-27735 --dry
+jira-test run TICKET-1 --dry
 
 # Show file locations for each test
-jira-test run HOTEL-27735 --locate
+jira-test run TICKET-1 --locate
 
 # Use custom Jest command
-jira-test run HOTEL-27735 --jest-cmd "npm test --"
+jira-test run TICKET-1 --jest-cmd "npm test --"
 
 # Use custom link type
-jira-test run HOTEL-27735 --link-type "tested by"
+jira-test run TICKET-1 --link-type "tested by"
 
 # Output report to custom path
-jira-test run HOTEL-27735 --report-json ./reports/test-report.json
+jira-test run TICKET-1 --report-json ./reports/test-report.json
 ```
 
 ## Exit Codes
